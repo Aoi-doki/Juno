@@ -1,0 +1,39 @@
+[project]
+name = "juno-laptop"
+version = "0.1.0"
+description = "Juno's laptop client: wake word, speech, and awareness"
+requires-python = ">=3.11"
+
+# Deliberately no PyTorch. Kokoro and openWakeWord run on onnxruntime,
+# faster-whisper on CTranslate2, and endpointing uses webrtcvad — so the whole
+# voice stack installs in seconds and starts instantly, instead of pulling in
+# ~2 GB and taking several seconds to import.
+dependencies = [
+    "numpy>=1.26",
+    "sounddevice>=0.4.7",
+    "kokoro-onnx>=0.4",
+    "openwakeword>=0.6",
+    "onnxruntime>=1.18",
+    "faster-whisper>=1.0",
+    "webrtcvad>=2.0.10",
+    "websockets>=13",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+juno-laptop = "juno_laptop.main:main"
+juno-audition = "juno_laptop.audition:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["juno_laptop*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

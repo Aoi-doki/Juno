@@ -1,0 +1,35 @@
+# The brain, on the always-on box.
+#   sudo cp juno-brain.service /etc/systemd/system/
+#   sudo systemctl enable --now juno-brain
+#
+# Secrets live in /etc/juno/env (chmod 600), not in this file:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   JUNO_AUTH_TOKEN=...
+
+[Unit]
+Description=Juno brain
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=juno
+WorkingDirectory=/opt/juno/brain
+EnvironmentFile=/etc/juno/env
+ExecStart=/opt/juno/brain/.venv/bin/python -m juno
+Restart=always
+RestartSec=5
+
+# It holds a database of everything you do. Give it no more of the machine
+# than it needs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/juno/brain
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -19,3 +19,6 @@ models/
 *.onnx
 *.tflite
 *.task
+
+# Client config
+client.yaml

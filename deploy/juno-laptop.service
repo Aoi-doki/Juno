@@ -1,0 +1,31 @@
+# The laptop client, as a *user* service — it needs your audio session, which
+# a system service does not have.
+#
+#   cp juno-laptop.service ~/.config/systemd/user/
+#   systemctl --user enable --now juno-laptop
+#
+# So it survives logout and starts at boot:
+#   sudo loginctl enable-linger $USER
+#
+# Put JUNO_AUTH_TOKEN in ~/.config/juno/env (chmod 600).
+
+[Unit]
+Description=Juno laptop client
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/juno/clients/laptop
+EnvironmentFile=%h/.config/juno/env
+ExecStart=%h/juno/clients/laptop/.venv/bin/juno-laptop
+Restart=always
+RestartSec=5
+
+# The brain is often unreachable at login — Tailscale may not be up yet, and a
+# laptop resumes onto strange networks. The client reconnects on its own, so
+# restarts should not be rate-limited into giving up.
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=default.target

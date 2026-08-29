@@ -85,9 +85,17 @@ explicitly ask her to look at something.
 
 ## Status
 
-Phase 0 complete: the brain runs, devices connect and authenticate, events
-reach the timeline, and memory survives restarts. 33 tests, including the real
-WebSocket handshake.
+**Phase 0 — the brain.** Runs, authenticates devices, records events to the
+timeline, and remembers across restarts. Covered by tests including the real
+WebSocket handshake and token rejection.
 
-Next: the laptop voice client (Phase 1), then phone awareness, proactivity,
-camera presence, and Home Assistant. See the build plan for the full sequence.
+**Phase 1 — voice.** Wake word, endpointing, transcription and Kokoro speech,
+with barge-in. Verified as far as it can be without a microphone: the chunking
+and timing rules are unit-tested, the audio path itself needs hardware.
+
+Neither has yet run on real hardware with a real microphone — that's the next
+thing to do, and the audition script is where to start.
+
+**Not built yet:** screen awareness and desktop control (Phase 2), the phone
+companion app (3), proactivity and scheduling (4), camera presence (5), Home
+Assistant (6).
