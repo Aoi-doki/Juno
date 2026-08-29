@@ -6,6 +6,13 @@ tells you the truth about it.
 Named for *Juno Moneta* — "Juno who warns", the aspect of the goddess who
 warned Rome of what was coming. Wake word: **"Hey Juno."**
 
+**→ [SETUP.md](SETUP.md) walks the whole thing start to finish.** About two
+hours, most of it waiting on downloads; you can stop a third of the way in and
+already have an assistant you can talk to.
+
+**→ [TODO.md](TODO.md) is everything still outstanding** — what only you can
+do, what has never met real hardware, and the known gaps.
+
 ## What she is meant to do
 
 | | |
@@ -54,12 +61,15 @@ clients/phone/      Android app: app usage, notifications, the ringing alarm
 deploy/             systemd units and host setup
 ```
 
-## Running the brain
+## Running it
+
+Full instructions are in **[SETUP.md](SETUP.md)**. The short version, for a
+brain on the machine in front of you:
 
 ```bash
 cd brain
-python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-cp config.example.yaml config.yaml     # then edit it
+python -m venv .venv && .venv/bin/pip install -e ".[dev,calendar]"
+cp config.example.yaml config.yaml
 
 export JUNO_AUTH_TOKEN=$(openssl rand -hex 32)
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -70,7 +80,9 @@ export ANTHROPIC_API_KEY=sk-ant-...
 `/ws` and must present the auth token in their first frame.
 
 ```bash
-cd brain && .venv/bin/python -m pytest
+cd brain            && .venv/bin/python -m pytest
+cd clients/laptop   && .venv/bin/python -m pytest
+cd clients/phone    && gradle test
 ```
 
 ## Security
