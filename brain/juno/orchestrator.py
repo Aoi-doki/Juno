@@ -15,12 +15,17 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from juno.agent import Agent
+from juno.calendar import Calendar
 from juno.config import Config
+from juno.homeassistant import HomeAssistant
 from juno.memory import Memory, TimelineRow
 from juno.protocol import Capability, Envelope, speak as speak_frame
+from juno.scheduler import Scheduler
 
 log = logging.getLogger(__name__)
 
@@ -95,15 +100,43 @@ class DeviceRegistry:
 
 
 def create_app(config: Config) -> FastAPI:
-    app = FastAPI(title="Juno")
     memory = Memory(config.db_path)
     registry = DeviceRegistry()
     agent = Agent(config, memory, registry)
+    calendar = Calendar(config.calendar_ics_url or None)
+    home = HomeAssistant(
+        config.home_assistant.url,
+        config.home_assistant.token,
+        config.home_assistant.forbidden,
+    )
+    scheduler = Scheduler(config, memory, registry, agent, calendar)
 
+    # The tools reach these through the agent's context.
+    agent.ctx.calendar = calendar
+    agent.ctx.home = home
+    agent.ctx.scheduler = scheduler
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Started here rather than at import so the tests, which build the app
+        # without wanting a live proactivity loop, are not fighting a timer.
+        task = asyncio.create_task(scheduler.run())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            memory.close()
+
+    app = FastAPI(title="Juno", lifespan=lifespan)
     app.state.config = config
     app.state.memory = memory
     app.state.devices = registry
     app.state.agent = agent
+    app.state.scheduler = scheduler
+    app.state.calendar = calendar
+    app.state.home = home
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

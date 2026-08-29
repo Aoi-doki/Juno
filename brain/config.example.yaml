@@ -32,6 +32,20 @@ voice:
   whisper_compute: int8
   endpoint_silence_ms: 700
 
+# Private subscription URL for your calendar — Google, Radicale, Nextcloud and
+# Fastmail all expose one. Full CalDAV is not needed just to read it.
+# Can also be supplied as JUNO_CALENDAR_URL.
+calendar_ics_url: ""
+
+home_assistant:
+  url: "http://homeassistant.local:8123"   # run HA on your LAN, not the VPS
+  token: ""                                # or JUNO_HA_TOKEN, which wins
+  # Never touched, by entity id or `domain.*` glob. Locks and garage doors are
+  # the obvious candidates. Anything in the lock/cover/alarm/vacuum domains
+  # additionally needs explicit spoken confirmation even when not listed here.
+  forbidden:
+    - lock.front_door
+
 proactivity:
   level: 7                # 0 = only when spoken to, 10 = drill sergeant
   quiet_hours: [23, 8]    # she starts no conversations between these hours

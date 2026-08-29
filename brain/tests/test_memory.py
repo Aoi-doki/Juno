@@ -60,6 +60,33 @@ def test_digest_collapses_consecutive_identical_events(mem):
     assert "(30m)" in digest or "(29m)" in digest
 
 
+def test_digest_breaks_a_run_across_a_long_silence(mem):
+    """Same app before and after a two-hour gap is two sessions, not one.
+
+    Clients report on change plus a heartbeat, so a silence means the client
+    went quiet — not that the activity continued.
+    """
+    start = time.time() - 4 * 3600
+    mem.add_event(TimelineRow(ts=start, kind="screen.focus", summary="Firefox — reddit.com"))
+    mem.add_event(TimelineRow(ts=start + 120, kind="screen.focus", summary="Firefox — reddit.com"))
+    # ... laptop shut, two hours pass ...
+    mem.add_event(TimelineRow(ts=start + 7320, kind="screen.focus", summary="Firefox — reddit.com"))
+
+    digest = mem.digest(since=start - 60)
+    assert digest.count("Firefox") == 2
+    assert "(120m)" not in digest
+
+
+def test_digest_duration_uses_the_last_sample_not_the_next_run(mem):
+    """A run's length must end where its own samples end."""
+    start = time.time() - 3600
+    mem.add_event(TimelineRow(ts=start, kind="screen.focus", summary="Ghostty — nvim"))
+    mem.add_event(TimelineRow(ts=start + 60, kind="screen.focus", summary="Ghostty — nvim"))
+    mem.add_event(TimelineRow(ts=start + 90, kind="screen.focus", summary="Firefox — reddit.com"))
+
+    assert "Ghostty — nvim  (1m)" in mem.digest(since=start - 60)
+
+
 def test_digest_is_explicit_when_empty(mem):
     assert mem.digest(since=time.time() - 60) == "(nothing recorded)"
 

@@ -71,6 +71,24 @@ class ProactivityConfig:
 
 
 @dataclass(slots=True)
+class HomeAssistantConfig:
+    """Home Assistant is the device layer rather than per-vendor APIs: one
+    integration gets every device HA supports, now and later."""
+
+    url: str = ""
+    # Long-lived access token, from your HA profile page. Env var wins so it
+    # need not be written to disk.
+    token: str = ""
+    # Entities Juno may never touch, by entity_id or a `domain.*` glob. Locks
+    # and garage doors are the obvious candidates.
+    forbidden: list[str] = field(default_factory=list)
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.url and self.token)
+
+
+@dataclass(slots=True)
 class Config:
     host: str = "0.0.0.0"
     port: int = 8765
@@ -81,9 +99,13 @@ class Config:
     auth_token: str = ""
     timezone: str = "UTC"
     user_name: str = "you"
+    # Private subscription URL for your calendar. Google, Radicale, Nextcloud
+    # and Fastmail all expose one; full CalDAV is not needed to read it.
+    calendar_ics_url: str = ""
     models: ModelConfig = field(default_factory=ModelConfig)
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     proactivity: ProactivityConfig = field(default_factory=ProactivityConfig)
+    home_assistant: HomeAssistantConfig = field(default_factory=HomeAssistantConfig)
 
     @property
     def anthropic_key(self) -> str:
@@ -103,6 +125,17 @@ class Config:
                 "(generate one with: openssl rand -hex 32)"
             )
 
+        home = dict(raw.get("home_assistant") or {})
+        home["token"] = os.environ.get("JUNO_HA_TOKEN") or home.get("token", "")
+
+        proactivity = dict(raw.get("proactivity") or {})
+        if "quiet_hours" in proactivity:
+            # YAML gives a list; the dataclass wants a pair, and comparing a
+            # list against a tuple later would silently misbehave.
+            proactivity["quiet_hours"] = tuple(proactivity["quiet_hours"])
+        if "check_in_minutes" in proactivity:
+            proactivity["check_in_minutes"] = tuple(proactivity["check_in_minutes"])
+
         return cls(
             host=raw.get("host", "0.0.0.0"),
             port=int(raw.get("port", 8765)),
@@ -110,7 +143,10 @@ class Config:
             auth_token=token,
             timezone=raw.get("timezone", "UTC"),
             user_name=raw.get("user_name", "you"),
+            calendar_ics_url=os.environ.get("JUNO_CALENDAR_URL")
+            or raw.get("calendar_ics_url", ""),
             models=ModelConfig(**(raw.get("models") or {})),
             voice=VoiceConfig(**(raw.get("voice") or {})),
-            proactivity=ProactivityConfig(**(raw.get("proactivity") or {})),
+            proactivity=ProactivityConfig(**proactivity),
+            home_assistant=HomeAssistantConfig(**home),
         )

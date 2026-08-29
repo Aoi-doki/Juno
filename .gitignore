@@ -19,3 +19,12 @@ models/
 *.onnx
 *.tflite
 *.task
+
+# Client config
+client.yaml
+
+# Android
+.gradle/
+local.properties
+*.apk
+*.aab

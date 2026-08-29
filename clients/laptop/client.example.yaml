@@ -1,0 +1,32 @@
+# Copy to client.yaml and edit. client.yaml is gitignored.
+# The token is not read from here in practice — set JUNO_AUTH_TOKEN instead.
+
+brain_url: ws://juno-brain:8765/ws   # the Tailscale name of your always-on box
+device_id: ""                        # blank = this machine's hostname
+kind: laptop
+
+wake_word: hey_jarvis                # placeholder until "hey juno" is trained
+wake_threshold: 0.6                  # raise if it fires on normal speech
+kokoro_voice: af_heart               # run juno-audition to choose
+kokoro_speed: 1.0
+whisper_model: base.en               # small.en is better and ~3x slower
+whisper_compute: int8
+endpoint_silence_ms: 700             # silence that ends your turn
+max_utterance_seconds: 20.0
+
+enable_barge_in: true
+barge_in_frames: 3                   # 60 ms of speech cuts her off
+
+model_dir: models
+
+# Lets Juno type and click in your session. Off by default: anything that can
+# type into your session can do anything you can, and a misheard sentence
+# should not be able to run a command. Needs ydotool (Wayland) or xdotool (X11).
+allow_input_synthesis: false
+
+# Webcam presence. Frames are processed locally by MediaPipe and discarded —
+# only derived events (at the desk, away, slouching) are ever sent.
+# Needs the camera extra:  pip install -e ".[camera]"
+enable_camera: false
+camera_index: 0
+camera_poll_seconds: 2.0
