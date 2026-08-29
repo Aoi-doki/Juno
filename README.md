@@ -35,12 +35,17 @@ Cloud tokens are spent only on discrete moments of actual reasoning.
 
 The rule that keeps it cheap: **clients send text, never pixels.** Thirty
 screen samples of the same app collapse into one line — `Firefox — reddit.com
-(30m)` — before anything reaches a model. A day of activity costs a fraction of
-a cent to reason about.
+(30m)` — before anything reaches a model.
 
-Expected running cost: **$0 of infrastructure, $1–3/month of model tokens**,
-with a hard budget cap in config that drops to a local model rather than
-overspending.
+**It runs on nothing.** Free VPS, free Tailscale, Gemini's free tier for
+conversation, and Ollama for everything sensitive. Kokoro, Whisper,
+openWakeWord and MediaPipe are all local and unmetered.
+
+The one real decision is where each kind of thinking happens. Check-ins carry
+your activity timeline — your screen contents — so they default to the **local**
+model, and only ordinary conversation goes out to a hosted one. `python -m
+juno.evals.checkin` measures what that costs you in judgement, so it's a choice
+you make on data.
 
 ## Layout
 
@@ -49,7 +54,9 @@ brain/              always-on service
   juno/
     protocol.py       the wire format, shared by every client
     orchestrator.py   WebSocket hub, device registry, presence routing
-    agent.py          Claude tool-use loop, model tiering, budget ceiling
+    agent.py          the tool-use loop, routed per role
+    engines.py        Gemini / Ollama / Claude behind one interface
+    evals/            does this model know when to shut up?
     memory.py         SQLite: conversation, timeline, facts, spend
     proactive.py      the rules for speaking — and mostly for not speaking
     scheduler.py      the tick loop that gives her initiative
@@ -72,8 +79,15 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev,calendar]"
 cp config.example.yaml config.yaml
 
 export JUNO_AUTH_TOKEN=$(openssl rand -hex 32)
-export ANTHROPIC_API_KEY=sk-ant-...
+export GEMINI_API_KEY=...          # free, no card
 .venv/bin/python -m juno
+```
+
+Before trusting her to interrupt you, see which engine actually knows when to
+stay quiet:
+
+```bash
+.venv/bin/python -m juno.evals.checkin --engine gemini --engine local
 ```
 
 `GET /health` lists connected devices and 30-day spend. Clients connect to

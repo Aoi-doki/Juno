@@ -171,7 +171,7 @@ class Scheduler:
 
         digest = self.memory.digest(since=time.time() - 2 * 3600)
         reply = await self.agent.respond(
-            build_prompt(nag, digest, self._stated_plan()), history=6
+            build_prompt(nag, digest, self._stated_plan()), history=6, role="checkin"
         )
         if not reply.text or is_silence(reply.text):
             return
@@ -196,7 +196,9 @@ class Scheduler:
             return
 
         digest = self.memory.digest(since=time.time() - 90 * 60)
-        reply = await self.agent.respond(CHECK_IN_PROMPT.format(digest=digest), history=8)
+        reply = await self.agent.respond(
+            CHECK_IN_PROMPT.format(digest=digest), history=8, role="checkin"
+        )
         if is_silence(reply.text):
             log.debug("check-in: nothing to say")
             return
