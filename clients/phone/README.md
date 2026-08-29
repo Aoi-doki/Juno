@@ -1,21 +1,37 @@
-# Juno — phone client (Phase 3, not built yet)
+# Juno — phone client
 
 Target device: **Samsung Galaxy S25 Ultra**, unrooted, One UI 7/8 on Android 15/16.
+
+> **Status:** written, unit-tested, and built by CI — but never run on a
+> physical device. Grab the APK from the latest CI run's artifacts (or
+> `gradle assembleDebug`) and see the setup checklist below.
 
 Scope is deliberately narrow. The phone is **not** remote-controlled. It reports
 what you're doing and talks back at you — which is all that's needed to catch
 doomscrolling, and it collapses the whole phase into one small Kotlin app with
 a foreground service and a WebSocket to the brain.
 
-## What it needs to do
+## What it does
 
 | Job | Mechanism |
 | --- | --- |
-| Notice doomscrolling | `UsageStatsManager`, polled every ~30 s |
-| Forward notifications | `NotificationListenerService` |
-| Talk | Audio streamed from the brain, so the voice matches the laptop |
-| Ring at you | Full-screen intent that overrides Do Not Disturb |
-| Know where you are | Coarse location, battery, screen-on state |
+| Notice doomscrolling | `UsageStatsManager`, polled every 30 s |
+| Forward notifications | `NotificationListenerService` — app and title only, never the body |
+| Talk | Android's built-in TTS |
+| Ring at you | Full-screen intent that overrides Do Not Disturb, speaking on the alarm stream |
+| Survive a reboot | `BOOT_COMPLETED` → `specialUse` foreground service |
+
+### Two known gaps
+
+**Her voice is different here.** The laptop uses Kokoro; the phone uses
+Android's system TTS, because the brain has no synthesiser of its own — it
+sends text, and each client speaks it however it can. Matching them would mean
+running Kokoro on the brain and streaming PCM down the socket. Worth doing; not
+done.
+
+**No location reporting.** It would be a small addition (`FusedLocationProvider`
+plus a runtime permission), but nothing in the current proactivity rules uses
+it, so it would be a permission prompt bought for nothing.
 
 ## Samsung-specific obstacles
 

@@ -11,7 +11,7 @@ warned Rome of what was coming. Wake word: **"Hey Juno."**
 | | |
 | --- | --- |
 | **Talk, either way, any time** | Local wake word and speech recognition, local speech synthesis. She can start the conversation, not just answer. |
-| **Watch the laptop** | Foreground window and OCR digest, so "what have I been doing?" has a real answer. |
+| **Watch the laptop** | Which window has focus, so "what have I been doing?" has a real answer. Titles, not screenshots. |
 | **Watch you** | Webcam presence — at your desk, away, slouching — derived locally, never uploaded. |
 | **Watch the phone** | Per-app foreground time and notifications, which is how she catches doomscrolling. |
 | **Keep the schedule honest** | Calendar-driven, escalating to a phone alarm that rings through Do Not Disturb. |
@@ -44,8 +44,13 @@ brain/              always-on service
     orchestrator.py   WebSocket hub, device registry, presence routing
     agent.py          Claude tool-use loop, model tiering, budget ceiling
     memory.py         SQLite: conversation, timeline, facts, spend
+    proactive.py      the rules for speaking — and mostly for not speaking
+    scheduler.py      the tick loop that gives her initiative
+    calendar.py       ICS subscription reading
+    homeassistant.py  the smart home device layer
     tools/            capabilities exposed to the model
-clients/laptop/     wake word, speech, screen and camera awareness
+clients/laptop/     wake word, speech, screen focus, camera presence, control
+clients/phone/      Android app: app usage, notifications, the ringing alarm
 deploy/             systemd units and host setup
 ```
 
@@ -85,22 +90,23 @@ explicitly ask her to look at something.
 
 ## Status
 
-**Phase 0 — the brain.** Runs, authenticates devices, records events to the
-timeline, and remembers across restarts. Covered by tests including the real
-WebSocket handshake and token rejection.
+All six phases are written and tested. **Nothing has run on real hardware yet** —
+no microphone, no webcam, no phone. That is the next step and it is the only
+thing standing between this and a working assistant.
 
-**Phase 1 — voice.** Wake word, endpointing, transcription and Kokoro speech,
-with barge-in. Verified as far as it can be without a microphone: the chunking
-and timing rules are unit-tested, the audio path itself needs hardware.
+| Phase | State |
+| --- | --- |
+| 0 — brain | Runs; devices connect and authenticate; memory survives restarts |
+| 1 — voice | Wake word, Whisper, Kokoro, barge-in. Audio path unverified |
+| 2 — screen + control | Focus tracking on niri/Hyprland/sway/X11; notify, launch, gated input |
+| 3 — phone | Kotlin app, built by CI. Never installed on a device |
+| 4 — proactivity | Escalation ladder, calendar, quiet hours, snooze |
+| 5 — camera | MediaPipe presence, frames never leave the machine |
+| 6 — smart home | Home Assistant, with guards on locks and covers |
 
-**Phase 2 — screen awareness.** Focused-window tracking on niri, Hyprland, sway
-and X11, with redaction at the point of capture and debounced reporting.
-Desktop *control* is not built yet.
+Tests cover the logic that can be tested without hardware: the timing and
+debounce rules, the suppression gates, the parsers, the session arithmetic.
+The audio, camera and Android runtime paths need your devices.
 
-Nothing has yet run on real hardware with a real microphone — that's the next
-thing to do, and `juno-audition` is where to start.
-
-**Not built yet:** desktop control (rest of Phase 2), the phone companion app
-(3) — see [`clients/phone/README.md`](clients/phone/README.md) for the
-Galaxy S25 Ultra constraints — proactivity and scheduling (4), camera presence
-(5), Home Assistant (6).
+**Start here:** `clients/laptop/README.md` — fetch the models, run
+`juno-audition`, and pick her voice.
