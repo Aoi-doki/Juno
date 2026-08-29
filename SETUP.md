@@ -11,7 +11,7 @@ onward add the phone, the calendar and the smart home.
 | | |
 | --- | --- |
 | An always-on machine | Oracle Cloud's Always Free tier is what this is designed around — free forever, no card charge |
-| An Anthropic API key | From [console.anthropic.com](https://console.anthropic.com). Budget $1–3/month |
+| A Gemini API key | Free, no card, from [aistudio.google.com](https://aistudio.google.com/apikey) |
 | Your laptop | Linux. Wayland (niri, Hyprland, sway) or X11 |
 | An Android phone | Optional, and only for the doomscroll nagging |
 | A Tailscale account | Free for personal use |
@@ -67,15 +67,38 @@ sudo -u juno .venv/bin/pip install -e ".[calendar]"
 sudo -u juno cp config.example.yaml config.yaml
 ```
 
+Then Ollama, which runs the local model that handles check-ins:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen3:4b
+```
+
+It has no GPU here, so expect 10–30 seconds per check-in. That is fine —
+nobody is waiting on a check-in. It is *not* fine for conversation, which is
+why conversation is routed to Gemini by default.
+
 **Generate the shared token now — you'll need it on every device.**
 
 ```bash
 sudo mkdir -p /etc/juno
-printf 'ANTHROPIC_API_KEY=sk-ant-...\nJUNO_AUTH_TOKEN=%s\n' "$(openssl rand -hex 32)" \
+printf 'GEMINI_API_KEY=...\nJUNO_AUTH_TOKEN=%s\n' "$(openssl rand -hex 32)" \
   | sudo tee /etc/juno/env > /dev/null
 sudo chmod 600 /etc/juno/env
 sudo cat /etc/juno/env        # copy the token somewhere for step 4
 ```
+
+**Check which engine handles what** before starting her. The default keeps
+check-ins — which carry your screen contents — on the local model, and sends
+only ordinary conversation to Gemini. To see what that costs you in judgement:
+
+```bash
+sudo -u juno .venv/bin/python -m juno.evals.checkin --engine gemini --engine local
+```
+
+Sixteen realistic scenarios, scored on how often each model correctly stays
+quiet. Watch the **false alarms** column — that is the one that decides whether
+you keep her installed.
 
 Edit `config.yaml` — at minimum set `user_name` and `timezone`. Then start it:
 
@@ -265,14 +288,22 @@ Then, out loud:
 | Device missing from `/health` | Token mismatch, or Tailscale isn't up yet. The client logs both plainly — check its journal first |
 | She never hears the wake word | Lower `wake_threshold` toward 0.4. Too eager? Raise it toward 0.8 |
 | `juno-audition` fails immediately | PortAudio isn't installed, or the models weren't fetched |
-| She hears you but never replies | `ANTHROPIC_API_KEY` isn't set on the box — the brain logs a warning at startup and still records events |
+| She hears you but never replies | No engine is usable. The brain logs which ones are available at startup; check `GEMINI_API_KEY` is set and `ollama serve` is running |
 | She stops talking entirely | Check quiet hours in `config.yaml`, and whether the camera thinks you're away |
 | Phone reports for a day, then stops | Samsung deep-sleep. Re-check *Never sleeping apps* |
-| She goes quiet after a month | The budget cap tripped and dropped her to the local model. `/health` shows the spend |
+| She nags constantly | Run the eval against your check-in engine. If false alarms are high, switch `checkin` to a better engine or drop the proactivity level |
+| Check-ins are slow | Expected on the free ARM box — no GPU. Nobody is waiting on them, so it only matters if it stops keeping up |
 
 ## What it costs
 
-Infrastructure is free — the VPS, Tailscale, and every model that runs
-continuously (Kokoro, Whisper, openWakeWord, MediaPipe). The only bill is
-Claude tokens, **about $1–3/month**, and `models.monthly_budget_usd` is a hard
-ceiling that falls back to a local model rather than overspending.
+**Nothing.** The VPS, Tailscale, Gemini's free tier, Ollama, and every model
+that runs continuously (Kokoro, Whisper, openWakeWord, MediaPipe) are all free.
+
+The trade you are making instead of money is data: Gemini's free tier may train
+on what you send it. That is why check-ins — which carry your activity timeline
+— default to the local model, and only conversation goes out. If you would
+rather nothing left the machine at all, set `conversation: local` too and accept
+slower replies.
+
+Claude remains available as an engine if you ever want to pay for sharper
+judgement; it is commented out in `config.example.yaml`.

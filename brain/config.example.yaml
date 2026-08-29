@@ -1,7 +1,7 @@
 # Copy to config.yaml and edit. config.yaml is gitignored.
 #
-# The Anthropic key is NOT read from here — it comes from the ANTHROPIC_API_KEY
-# environment variable, so this file stays safe to share.
+# No API key is read from this file — keys come from environment variables, so
+# this stays safe to share.
 
 host: 0.0.0.0          # Tailscale-only in practice; the firewall stays closed
 port: 8765
@@ -14,13 +14,34 @@ user_name: Aoi
 auth_token: ""
 
 models:
-  routine: claude-haiku-4-5-20251001   # the constant background load
-  escalation: claude-sonnet-5          # only for turns that need real thinking
+  # Engines Juno can think with. `openai` covers anything speaking OpenAI's
+  # chat-completions API — Gemini, Ollama, Cerebras, OpenRouter. API keys come
+  # from the environment, never from this file.
+  #
+  # You only need to name what differs from the built-in defaults.
+  engines:
+    gemini:
+      model: gemini-2.5-flash      # free tier, no card
+    local:
+      model: qwen3:4b              # Ollama on this box
+    # claude:
+    #   model: claude-haiku-4-5    # needs ANTHROPIC_API_KEY and a card
+
+  # Which engine handles what. These paths have genuinely different needs.
+  #
+  # Conversation is low-volume and you are waiting for it, so it wants the
+  # fastest engine available.
+  conversation: gemini
+  # Check-ins are high-volume AND carry your activity timeline — your screen
+  # contents. Keeping them local means that never reaches a free tier that
+  # trains on your data. The cost is judgement: run
+  #   python -m juno.evals.checkin --engine gemini --engine local
+  # to see how much you are giving up before deciding.
+  checkin: local
+  # Used whenever the role's engine is unavailable or errors.
+  fallback: local
+
   max_tokens: 1024
-  escalate_over_chars: 6000
-  monthly_budget_usd: 5.0              # hard cap; drops to Ollama when crossed
-  local_fallback_url: http://127.0.0.1:11434
-  local_fallback_model: qwen3:4b
 
 voice:
   wake_word: hey_juno

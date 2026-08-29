@@ -23,10 +23,14 @@ def main() -> int:
         print(f"config error: {exc}", file=sys.stderr)
         return 2
 
-    if not config.anthropic_key:
+    usable = [
+        name for name, spec in config.models.engines.items()
+        if (spec.kind == "openai" and spec.base_url) or (spec.kind == "anthropic" and spec.api_key)
+    ]
+    if not usable:
         logging.warning(
-            "ANTHROPIC_API_KEY is not set — Juno will connect and record events "
-            "but cannot reply. Set it and restart."
+            "No thinking engine is configured — Juno will connect and record "
+            "events but cannot reply. Set GEMINI_API_KEY, or run Ollama locally."
         )
 
     uvicorn.run(create_app(config), host=config.host, port=config.port, log_level="warning")

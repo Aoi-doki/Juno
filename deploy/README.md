@@ -26,7 +26,7 @@ Secrets go in `/etc/juno/env`, never in the repo:
 
 ```bash
 sudo mkdir -p /etc/juno
-printf 'ANTHROPIC_API_KEY=sk-ant-...\nJUNO_AUTH_TOKEN=%s\n' "$(openssl rand -hex 32)" \
+printf 'GEMINI_API_KEY=...\nJUNO_AUTH_TOKEN=%s\n' "$(openssl rand -hex 32)" \
   | sudo tee /etc/juno/env > /dev/null
 sudo chmod 600 /etc/juno/env
 ```

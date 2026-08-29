@@ -1,13 +1,13 @@
-"""The reasoning loop: assemble context, call Claude, run tools, repeat.
+"""The reasoning loop: assemble context, call an engine, run tools, repeat.
 
-Two things here exist purely to keep the bill in single digits:
+Which engine depends on the *role* of the turn, not on how hard it looks.
+Conversation and check-ins have genuinely different requirements — one is
+latency-sensitive and low-volume, the other is high-volume and carries your
+screen contents — so they are routed separately and can run on different
+backends entirely. See ``config.ModelConfig``.
 
-* **Tiering** — the routine model handles everything unless a turn looks hard,
-  because most turns are "should I say something right now?" answered with
-  *no*.
-* **A budget ceiling** — when the month's spend crosses the configured cap the
-  brain switches to a local Ollama model rather than quietly spending more.
-  Degraded, but never a surprise invoice.
+Every engine is addressed through the same neutral message format, so nothing
+below knows or cares whether it is talking to Gemini, Ollama or Claude.
 """
 
 from __future__ import annotations
@@ -19,21 +19,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
-from anthropic import AsyncAnthropic
-
 from juno import tools
 from juno.config import Config
+from juno.engines import Engine, EngineError, EngineReply, build_engine
 from juno.memory import Memory
 
 log = logging.getLogger(__name__)
 
-# USD per million tokens (input, output). Approximate and only used for the
-# self-imposed budget cap, so drift here costs accuracy in a warning, not money.
+# USD per million tokens (input, output), for the spend figure on /health.
+# Only meaningful for paid engines; free ones record nothing.
 PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.00, 5.00),
-    "claude-sonnet-5": (3.00, 15.00),
-    "claude-opus-5": (15.00, 75.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-opus-5": (5.00, 25.00),
 }
 
 MAX_TOOL_ROUNDS = 6
@@ -103,7 +101,37 @@ class Agent:
         self.config = config
         self.memory = memory
         self.ctx = tools.Context(memory=memory, devices=devices, config=config)
-        self._client = AsyncAnthropic(api_key=config.anthropic_key) if config.anthropic_key else None
+        self._engines: dict[str, Engine] = {}
+
+        for name, spec in config.models.engines.items():
+            try:
+                self._engines[name] = build_engine(name, spec, config.models.max_tokens)
+            except ValueError as exc:
+                log.error("skipping engine %s: %s", name, exc)
+
+        live = [n for n, e in self._engines.items() if e.available]
+        log.info("engines available: %s", ", ".join(live) or "none")
+
+    # --- engine selection ----------------------------------------------------
+
+    def engine_for(self, role: str) -> Engine | None:
+        """The engine for a role, falling back when it isn't usable.
+
+        An engine with no API key is *unavailable* rather than an error, so a
+        config listing Claude without a key quietly routes elsewhere instead of
+        failing at the worst moment.
+        """
+        wanted = getattr(self.config.models, role, None) or self.config.models.conversation
+        engine = self._engines.get(wanted)
+        if engine is not None and engine.available:
+            return engine
+
+        if engine is not None:
+            log.warning("engine %r for role %r is not usable; falling back", wanted, role)
+        fallback = self._engines.get(self.config.models.fallback)
+        if fallback is not None and fallback.available:
+            return fallback
+        return next((e for e in self._engines.values() if e.available), None)
 
     # --- context assembly ----------------------------------------------------
 
@@ -131,38 +159,22 @@ class Agent:
         parts.append(f"It is currently {now:%A %d %B, %H:%M}.")
         return "\n\n".join(parts)
 
-    def _choose_model(self, messages: list[dict[str, Any]]) -> str:
-        """Routine model unless the turn looks expensive to think about."""
-        size = sum(len(json.dumps(m)) for m in messages)
-        if size > self.config.models.escalate_over_chars:
-            return self.config.models.escalation
-        return self.config.models.routine
-
-    def _over_budget(self) -> bool:
-        month_start = time.time() - 30 * 86400
-        return self.memory.spend_since(month_start) >= self.config.models.monthly_budget_usd
-
-    def _record_spend(self, model: str, usage: Any) -> None:
-        rate = next((v for k, v in PRICES.items() if model.startswith(k)), None)
-        if rate is None or usage is None:
-            return
-        cost = (
-            getattr(usage, "input_tokens", 0) * rate[0]
-            + getattr(usage, "output_tokens", 0) * rate[1]
-        ) / 1_000_000
-        self.memory.record_spend(model, cost)
+    def _record_spend(self, reply: EngineReply) -> None:
+        rate = next((v for k, v in PRICES.items() if reply.model.startswith(k)), None)
+        if rate is None:
+            return  # a free engine; nothing to account for
+        cost = (reply.input_tokens * rate[0] + reply.output_tokens * rate[1]) / 1_000_000
+        self.memory.record_spend(reply.model, cost)
 
     # --- the loop ------------------------------------------------------------
 
-    async def respond(self, user_text: str, *, history: int = 16) -> Reply:
+    async def respond(
+        self, user_text: str, *, history: int = 16, role: str = "conversation"
+    ) -> Reply:
         """One full turn, including any tool use, returning what to say."""
-        if self._client is None:
-            return Reply("My API key isn't set, so I can't think right now.", "none", [])
-
-        if self._over_budget():
-            log.warning("monthly budget reached; falling back to local model")
-            text = await self._local_complete(user_text)
-            return Reply(text, self.config.models.local_fallback_model, [])
+        engine = self.engine_for(role)
+        if engine is None:
+            return Reply("I've got no thinking engine configured right now.", "none", [])
 
         messages: list[dict[str, Any]] = []
         for row in self.memory.recent_turns(history):
@@ -171,56 +183,54 @@ class Agent:
             )
         messages.append({"role": "user", "content": user_text})
 
-        model = self._choose_model(messages)
+        system = self.system_prompt()
+        definitions = tools.definitions()
         used: list[str] = []
 
         for _ in range(MAX_TOOL_ROUNDS):
-            response = await self._client.messages.create(
-                model=model,
-                max_tokens=self.config.models.max_tokens,
-                system=self.system_prompt(),
-                tools=tools.definitions(),
-                messages=messages,
-            )
-            self._record_spend(model, response.usage)
-
-            if response.stop_reason != "tool_use":
-                text = "".join(b.text for b in response.content if b.type == "text").strip()
-                return Reply(text, model, used)
-
-            messages.append({"role": "assistant", "content": response.content})
-            results = []
-            for block in response.content:
-                if block.type != "tool_use":
+            try:
+                reply = await engine.complete(system, messages, definitions)
+            except EngineError as exc:
+                log.error("%s", exc)
+                fallback = self._engines.get(self.config.models.fallback)
+                if fallback is not None and fallback is not engine and fallback.available:
+                    log.info("retrying on %s", fallback.name)
+                    engine = fallback
                     continue
-                used.append(block.name)
-                log.info("tool %s(%s)", block.name, block.input)
-                output = await tools.dispatch(block.name, dict(block.input), self.ctx)
-                results.append(
-                    {"type": "tool_result", "tool_use_id": block.id, "content": output}
+                return Reply("I couldn't reach my thinking engine.", engine.model, used)
+
+            self._record_spend(reply)
+
+            if not reply.wants_tools:
+                return Reply(reply.text, reply.model, used)
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": reply.text,
+                    "tool_calls": [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.name,
+                                "arguments": json.dumps(call.arguments),
+                            },
+                        }
+                        for call in reply.tool_calls
+                    ],
+                }
+            )
+            for call in reply.tool_calls:
+                used.append(call.name)
+                log.info("tool %s(%s)", call.name, call.arguments)
+                output = await tools.dispatch(call.name, call.arguments, self.ctx)
+                messages.append(
+                    {"role": "tool", "tool_call_id": call.id, "content": output}
                 )
-            messages.append({"role": "user", "content": results})
 
         # Ran out of rounds: better to say something honest than loop forever.
-        return Reply("I got stuck working that out. Ask me again?", model, used)
+        return Reply("I got stuck working that out. Ask me again?", engine.model, used)
 
-    async def _local_complete(self, user_text: str) -> str:
-        """Ollama fallback. No tools — it exists to stay useful when the budget
-        is spent, not to be as capable."""
-        url = f"{self.config.models.local_fallback_url}/api/chat"
-        payload = {
-            "model": self.config.models.local_fallback_model,
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": self.system_prompt()},
-                {"role": "user", "content": user_text},
-            ],
-        }
-        try:
-            async with httpx.AsyncClient(timeout=120) as http:
-                resp = await http.post(url, json=payload)
-                resp.raise_for_status()
-                return resp.json()["message"]["content"].strip()
-        except Exception as exc:  # noqa: BLE001
-            log.error("local fallback failed: %s", exc)
-            return "I've hit my budget for the month and can't reach the local model either."
+    def spend_30d(self) -> float:
+        return self.memory.spend_since(time.time() - 30 * 86400)

@@ -15,10 +15,17 @@ Accounts, hardware and decisions I can't make from here.
 - [ ] **Get an Oracle Always Free ARM instance.** The one step that can simply
       refuse — free ARM capacity is scarce. Retry across availability domains,
       and across days.
-- [ ] **Anthropic API key**, with billing set up. Budget $1–3/month.
+- [ ] **Gemini API key** — free, no card, from
+      [aistudio.google.com](https://aistudio.google.com/apikey).
+- [ ] **Install Ollama on the box** and pull `qwen3:4b`. This is what handles
+      check-ins, so your screen contents never leave the machine.
 - [ ] **Tailscale account**, on all three devices, box renamed `juno-brain`.
 - [ ] **Pick her voice** — `juno-audition`. Nobody else can make this call and
       it's the thing you'll hear most.
+- [ ] **Run the check-in eval** —
+      `python -m juno.evals.checkin --engine gemini --engine local`. Decides
+      whether the local model is good enough to keep check-ins private, or
+      whether that costs too much judgement. Watch the false-alarm column.
 - [ ] **Install PortAudio and libnotify** on the laptop, or the microphone and
       notifications silently do nothing.
 - [ ] **Calendar ICS URL**, if you want her to know your schedule.
@@ -76,8 +83,10 @@ Written down rather than quietly left out.
 - [ ] **`calendar.py` has no tests.** The date normalisation matters: all-day
       events arrive as `date` rather than `datetime`, and comparing those raises
       — which would take down a scheduler tick.
-- [ ] **`agent.py` has no tests.** Needs the Anthropic client mocked; the tool
-      loop and the budget ceiling are both worth pinning.
+- [ ] **The agent's tool loop has no tests.** The engines underneath it now do
+      — message conversion, tool schemas, failure handling — but the loop that
+      drives them, including the round limit and the fallback-on-error path,
+      isn't pinned.
 - [ ] **Scroll-session parsing is brittle.** The scheduler reads the phone's
       session out of an event summary with a string split. It should read the
       structured fields the phone already sends.
@@ -102,8 +111,12 @@ Tuning that only makes sense with real data behind it.
 - [ ] **Set the proactivity dial honestly.** It ships at 7. Give it a week
       before deciding — the instinct after one good nag is to raise it, and
       after one bad one to switch it off.
+- [ ] **Re-run the eval if you change the check-in engine or the persona.**
+      Both change how often she speaks, and the eval is the only thing that
+      catches it before she does.
 - [ ] **Tune `scroll_apps` thresholds** in `config.yaml` to your actual apps.
-- [ ] **Check `/health` for spend** after a week and set
-      `monthly_budget_usd` somewhere you're comfortable.
+- [ ] **Watch for Gemini rate limits** in the log. The free tier is 1,500
+      requests/day and Juno should use a fraction of that, but conversation is
+      the path that would notice first.
 - [ ] **Decide about `allow_input_synthesis`.** Off by default deliberately.
       Turn it on only once you trust what she does with everything else.

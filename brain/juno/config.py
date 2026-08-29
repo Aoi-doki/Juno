@@ -1,8 +1,8 @@
 """Configuration, loaded once from YAML with environment overrides.
 
-The only secret is the Anthropic key, which is read from the environment and
-never from the file — so ``config.yaml`` stays safe to commit if you ever want
-to track your own tuning.
+Secrets — API keys, the shared device token — are read from the environment and
+never from the file, so ``config.yaml`` stays safe to commit if you ever want to
+track your own tuning.
 """
 
 from __future__ import annotations
@@ -18,25 +18,71 @@ DEFAULT_PATH = Path(os.environ.get("JUNO_CONFIG", "config.yaml"))
 
 
 @dataclass(slots=True)
-class ModelConfig:
-    """Which model handles what.
+class EngineSpec:
+    """One backend Juno can think with.
 
-    ``routine`` carries the constant background load — check-in decisions,
-    short replies — and is why the monthly bill is single-digit dollars.
-    ``escalation`` is reserved for turns that actually need the reasoning.
+    ``kind`` is ``openai`` for anything speaking OpenAI's chat-completions API —
+    Gemini, Ollama, Cerebras, OpenRouter — or ``anthropic`` for Claude.
+
+    The key is read from the environment, never the file, so ``config.yaml``
+    stays safe to commit.
     """
 
-    routine: str = "claude-haiku-4-5-20251001"
-    escalation: str = "claude-sonnet-5"
+    kind: str = "openai"
+    base_url: str = ""
+    model: str = ""
+    api_key_env: str = ""
+
+    @property
+    def api_key(self) -> str:
+        return os.environ.get(self.api_key_env, "") if self.api_key_env else ""
+
+
+DEFAULT_ENGINES = {
+    # Free tier, no card. Fast and good at tool calls.
+    "gemini": EngineSpec(
+        kind="openai",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        model="gemini-2.5-flash",
+        api_key_env="GEMINI_API_KEY",
+    ),
+    # On the always-on box. Slow on ARM without a GPU — fine for check-ins that
+    # nobody is waiting on, painful for conversation.
+    "local": EngineSpec(
+        kind="openai",
+        base_url="http://127.0.0.1:11434/v1",
+        model="qwen3:4b",
+    ),
+    "claude": EngineSpec(
+        kind="anthropic",
+        model="claude-haiku-4-5",
+        api_key_env="ANTHROPIC_API_KEY",
+    ),
+}
+
+
+@dataclass(slots=True)
+class ModelConfig:
+    """Which engine handles what.
+
+    Roles rather than a single model, because Juno's paths have genuinely
+    different needs. Check-ins are high-volume and carry your screen contents,
+    so they are the natural candidate for staying local. Conversation is
+    low-volume and latency-sensitive, so it wants the fastest engine you have.
+    """
+
+    engines: dict[str, EngineSpec] = field(default_factory=lambda: dict(DEFAULT_ENGINES))
+    # Ordinary back-and-forth. Latency matters; you are waiting for it.
+    conversation: str = "gemini"
+    # Periodic "should I say anything?". High volume, and the prompt carries
+    # your activity timeline.
+    checkin: str = "local"
+    # Used when the role engine is unavailable or errors.
+    fallback: str = "local"
     max_tokens: int = 1024
-    # Above this many characters of assembled context, a turn is promoted to
-    # the escalation model. Cheap heuristic, easy to tune once you see traffic.
-    escalate_over_chars: int = 6000
-    # Hard stop. When the month's spend crosses this, the brain drops to the
-    # local Ollama tier rather than silently costing more than you agreed to.
-    monthly_budget_usd: float = 5.0
-    local_fallback_url: str = "http://127.0.0.1:11434"
-    local_fallback_model: str = "qwen3:4b"
+
+    def spec(self, role_engine: str) -> EngineSpec | None:
+        return self.engines.get(role_engine)
 
 
 @dataclass(slots=True)
@@ -107,10 +153,6 @@ class Config:
     proactivity: ProactivityConfig = field(default_factory=ProactivityConfig)
     home_assistant: HomeAssistantConfig = field(default_factory=HomeAssistantConfig)
 
-    @property
-    def anthropic_key(self) -> str:
-        return os.environ.get("ANTHROPIC_API_KEY", "")
-
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
         path = path or DEFAULT_PATH
@@ -136,6 +178,16 @@ class Config:
         if "check_in_minutes" in proactivity:
             proactivity["check_in_minutes"] = tuple(proactivity["check_in_minutes"])
 
+        models_raw = dict(raw.get("models") or {})
+        engines = dict(DEFAULT_ENGINES)
+        for name, spec in (models_raw.pop("engines", None) or {}).items():
+            # Merge over the default so a config only has to name what differs
+            # — usually just the model, keeping the verified base URL.
+            base = engines.get(name)
+            merged = {**(base.__dict__ if base else {}), **spec}
+            engines[name] = EngineSpec(**merged)
+        models_raw["engines"] = engines
+
         return cls(
             host=raw.get("host", "0.0.0.0"),
             port=int(raw.get("port", 8765)),
@@ -145,7 +197,7 @@ class Config:
             user_name=raw.get("user_name", "you"),
             calendar_ics_url=os.environ.get("JUNO_CALENDAR_URL")
             or raw.get("calendar_ics_url", ""),
-            models=ModelConfig(**(raw.get("models") or {})),
+            models=ModelConfig(**models_raw),
             voice=VoiceConfig(**(raw.get("voice") or {})),
             proactivity=ProactivityConfig(**proactivity),
             home_assistant=HomeAssistantConfig(**home),
