@@ -75,8 +75,42 @@ systemctl --user enable --now juno-laptop
 journalctl --user -u juno-laptop -f
 ```
 
+## Screen awareness
+
+She knows which window has focus, so "what have I been doing?" has a real
+answer. Supported compositors, in preference order:
+
+| | How |
+| --- | --- |
+| niri | `niri msg --json focused-window` |
+| Hyprland | `hyprctl -j activewindow` |
+| sway | `swaymsg -t get_tree` |
+| X11 | `xdotool` (title only) |
+
+Native IPC is preferred over `xdotool` even when both are present, since
+XWayland means `xdotool` is usually installed in a Wayland session too.
+
+If none is found, the client says so once and simply doesn't claim the `screen`
+capability — the brain then knows not to expect events, rather than waiting for
+ones that never arrive.
+
+**Titles, not screenshots.** A window title is one cheap IPC call and already
+text. Nothing is captured, and no image is produced or sent.
+
+**Redaction happens here, not in the brain.** Private-browsing windows,
+password managers and anything matching the patterns in `windows.py` are never
+reported at all — the string doesn't leave the machine. They report as *nothing*
+rather than as `[redacted]`, because a run of redaction markers would advertise
+exactly when you were doing something private.
+
+**Reporting is debounced.** Polls every 5 s, reports only on change once a
+window has held focus for 8 s, plus a heartbeat every 2 minutes. Alt-tabbing
+through windows produces no events, and an hour in one app produces a handful
+rather than 720.
+
 ## What is not here yet
 
-Screen awareness, desktop control and camera presence are Phase 2 and 5. The
-client answers `command` frames for those with an honest "not implemented"
-rather than silently ignoring them, so the brain knows they went nowhere.
+Desktop control (launching apps, typing) and camera presence are Phase 2's
+remainder and Phase 5. The client answers `command` frames for those with an
+honest "not implemented" rather than silently ignoring them, so the brain knows
+they went nowhere.

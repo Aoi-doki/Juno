@@ -17,18 +17,26 @@ from typing import Any
 from juno_laptop.config import ClientConfig
 from juno_laptop.link import Link
 from juno_laptop.listen import Listener
+from juno_laptop.screen import ScreenWatcher
 from juno_laptop.speak import Speaker
 
 log = logging.getLogger(__name__)
-
-CAPABILITIES = ["speak", "listen"]
 
 
 class Client:
     def __init__(self, config: ClientConfig) -> None:
         self.config = config
         self.speaker = Speaker(config)
-        self.link = Link(config, CAPABILITIES, self._on_frame)
+        self.screen = ScreenWatcher(send=lambda frame: self.link.send(frame))
+
+        capabilities = ["speak", "listen"]
+        # Only claim screen awareness if a compositor we can actually query is
+        # present — the brain routes on declared capabilities, and claiming one
+        # we cannot serve means it waits on events that never come.
+        if self.screen.available:
+            capabilities.append("screen")
+
+        self.link = Link(config, capabilities, self._on_frame)
         self.listener = Listener(
             config,
             on_utterance=self._on_utterance,
@@ -84,6 +92,8 @@ class Client:
 
     async def run(self) -> None:
         tasks = [asyncio.create_task(self.link.run()), asyncio.create_task(self.listener.run())]
+        if self.screen.available:
+            tasks.append(asyncio.create_task(self.screen.run()))
         try:
             await asyncio.gather(*tasks)
         finally:

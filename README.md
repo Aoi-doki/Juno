@@ -93,9 +93,14 @@ WebSocket handshake and token rejection.
 with barge-in. Verified as far as it can be without a microphone: the chunking
 and timing rules are unit-tested, the audio path itself needs hardware.
 
-Neither has yet run on real hardware with a real microphone — that's the next
-thing to do, and the audition script is where to start.
+**Phase 2 — screen awareness.** Focused-window tracking on niri, Hyprland, sway
+and X11, with redaction at the point of capture and debounced reporting.
+Desktop *control* is not built yet.
 
-**Not built yet:** screen awareness and desktop control (Phase 2), the phone
-companion app (3), proactivity and scheduling (4), camera presence (5), Home
-Assistant (6).
+Nothing has yet run on real hardware with a real microphone — that's the next
+thing to do, and `juno-audition` is where to start.
+
+**Not built yet:** desktop control (rest of Phase 2), the phone companion app
+(3) — see [`clients/phone/README.md`](clients/phone/README.md) for the
+Galaxy S25 Ultra constraints — proactivity and scheduling (4), camera presence
+(5), Home Assistant (6).

@@ -28,6 +28,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+# Clients report on change plus a periodic heartbeat, so consecutive events
+# further apart than this mean the client went quiet — asleep, locked, or
+# offline — not that the activity continued.
+MAX_RUN_GAP = 300.0
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversation (
     id        INTEGER PRIMARY KEY,
@@ -161,13 +166,19 @@ class Memory:
         with self._lock:
             return self._db.execute(query, params).fetchall()
 
-    def digest(self, since: float, limit: int = 80) -> str:
+    def digest(self, since: float, limit: int = 80, max_gap: float = MAX_RUN_GAP) -> str:
         """The timeline as compact text for a prompt.
 
         Consecutive rows with the same summary collapse into one line with a
         duration, which is what turns 200 ten-second screen samples into
         "Firefox — reddit.com  (34m)". Without this the timeline would dominate
         the context window and cost real money.
+
+        A long silence breaks the run even when the summary matches, because
+        clients report on change plus a heartbeat: leaving the laptop for an
+        hour and returning to the same window would otherwise read as one
+        unbroken session, and Juno would tell you that you spent an hour on
+        something you spent twenty minutes on.
         """
         rows = self.events_since(since)
         if not rows:
@@ -175,6 +186,7 @@ class Memory:
 
         lines: list[str] = []
         run_start = rows[0]["ts"]
+        run_end = rows[0]["ts"]
         run_summary = rows[0]["summary"]
 
         def flush(end_ts: float) -> None:
@@ -183,10 +195,11 @@ class Memory:
             lines.append(f"{stamp}  {run_summary}  ({minutes}m)")
 
         for row in rows[1:]:
-            if row["summary"] != run_summary:
-                flush(row["ts"])
+            if row["summary"] != run_summary or row["ts"] - run_end > max_gap:
+                flush(run_end)
                 run_start, run_summary = row["ts"], row["summary"]
-        flush(rows[-1]["ts"])
+            run_end = row["ts"]
+        flush(run_end)
 
         if len(lines) > limit:
             lines = ["… earlier activity trimmed …", *lines[-limit:]]
