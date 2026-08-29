@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Juno's own state — never commit these
+config.yaml
+*.db
+*.db-wal
+*.db-shm
+
+# Models are large and downloaded on first run
+models/
+*.onnx
+*.tflite
+*.task

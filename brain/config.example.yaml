@@ -1,0 +1,47 @@
+# Copy to config.yaml and edit. config.yaml is gitignored.
+#
+# The Anthropic key is NOT read from here — it comes from the ANTHROPIC_API_KEY
+# environment variable, so this file stays safe to share.
+
+host: 0.0.0.0          # Tailscale-only in practice; the firewall stays closed
+port: 8765
+db_path: juno.db
+timezone: Europe/London
+user_name: Aoi
+
+# Every client must present this. Generate with: openssl rand -hex 32
+# Can also be supplied as JUNO_AUTH_TOKEN, which takes precedence.
+auth_token: ""
+
+models:
+  routine: claude-haiku-4-5-20251001   # the constant background load
+  escalation: claude-sonnet-5          # only for turns that need real thinking
+  max_tokens: 1024
+  escalate_over_chars: 6000
+  monthly_budget_usd: 5.0              # hard cap; drops to Ollama when crossed
+  local_fallback_url: http://127.0.0.1:11434
+  local_fallback_model: qwen3:4b
+
+voice:
+  wake_word: hey_juno
+  wake_word_fallback: hey_jarvis       # used until the custom model is trained
+  wake_threshold: 0.6                  # raise if it triggers on normal speech
+  kokoro_voice: af_heart               # run `juno-audition` to pick by ear
+  kokoro_speed: 1.0
+  whisper_model: base.en
+  whisper_compute: int8
+  endpoint_silence_ms: 700
+
+proactivity:
+  level: 7                # 0 = only when spoken to, 10 = drill sergeant
+  quiet_hours: [23, 8]    # she starts no conversations between these hours
+  check_in_minutes: [20, 40]
+
+  # Apps that count as doomscrolling, and the minutes of unbroken use before
+  # the first nudge. Used from Phase 3 onward.
+  scroll_apps:
+    com.instagram.android: 15
+    com.zhiliaoapp.musically: 10   # TikTok
+    com.reddit.frontpage: 20
+    com.twitter.android: 15
+    com.google.android.youtube: 25
