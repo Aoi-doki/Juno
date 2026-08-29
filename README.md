@@ -10,6 +10,9 @@ warned Rome of what was coming. Wake word: **"Hey Juno."**
 hours, most of it waiting on downloads; you can stop a third of the way in and
 already have an assistant you can talk to.
 
+**→ [TODO.md](TODO.md) is everything still outstanding** — what only you can
+do, what has never met real hardware, and the known gaps.
+
 ## What she is meant to do
 
 | | |
