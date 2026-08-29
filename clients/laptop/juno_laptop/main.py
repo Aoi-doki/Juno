@@ -14,7 +14,9 @@ import logging
 import sys
 from typing import Any
 
+from juno_laptop.camera import CameraWatcher
 from juno_laptop.config import ClientConfig
+from juno_laptop.control import Controller, Outcome
 from juno_laptop.link import Link
 from juno_laptop.listen import Listener
 from juno_laptop.screen import ScreenWatcher
@@ -28,13 +30,22 @@ class Client:
         self.config = config
         self.speaker = Speaker(config)
         self.screen = ScreenWatcher(send=lambda frame: self.link.send(frame))
+        self.control = Controller(allow_input_synthesis=config.allow_input_synthesis)
+        self.camera = CameraWatcher(
+            send=lambda frame: self.link.send(frame),
+            index=config.camera_index,
+            poll_seconds=config.camera_poll_seconds,
+        ) if config.enable_camera else None
 
         capabilities = ["speak", "listen"]
-        # Only claim screen awareness if a compositor we can actually query is
-        # present — the brain routes on declared capabilities, and claiming one
-        # we cannot serve means it waits on events that never come.
+        # Only claim a capability we can actually serve — the brain routes on
+        # what devices declare, and claiming one we cannot serve means it waits
+        # on results that never come.
         if self.screen.available:
             capabilities.append("screen")
+        capabilities.extend(self.control.capabilities)
+        if self.camera is not None and self.camera.available:
+            capabilities.append("camera")
 
         self.link = Link(config, capabilities, self._on_frame)
         self.listener = Listener(
@@ -67,18 +78,51 @@ class Client:
                 asyncio.create_task(self._say(text))
             return
         if kind == "command":
-            # Phase 2 adds screen and control handling here. Reply honestly
-            # rather than silently, so the brain knows it went nowhere.
+            outcome = await self._run_command(frame)
             await self.link.send(
                 {
                     "type": "result",
                     "id": frame.get("id"),
-                    "ok": False,
-                    "detail": f"capability {frame.get('capability')!r} not implemented yet",
+                    "ok": outcome.ok,
+                    "detail": outcome.detail,
                 }
             )
             return
         log.debug("ignoring frame %r", kind)
+
+    async def _run_command(self, frame: dict[str, Any]) -> Outcome:
+        """Dispatch one command frame to the controller.
+
+        Unknown capabilities and actions return an honest failure rather than
+        being ignored, so the brain learns what this device cannot do instead
+        of waiting on a result that never comes.
+        """
+        capability = frame.get("capability")
+        args = frame.get("args") or {}
+        if capability != "control":
+            return Outcome(False, f"capability {capability!r} is not supported here")
+
+        action = str(args.get("action", ""))
+        try:
+            if action == "notify":
+                return await self.control.notify(
+                    str(args.get("summary", "Juno")),
+                    str(args.get("body", "")),
+                    bool(args.get("urgent", False)),
+                )
+            if action == "launch":
+                return await self.control.launch(str(args["application"]))
+            if action == "read_clipboard":
+                return await self.control.read_clipboard()
+            if action == "write_clipboard":
+                return await self.control.write_clipboard(str(args["text"]))
+            if action == "type":
+                return await self.control.type_text(str(args["text"]))
+            if action == "press":
+                return await self.control.press(str(args["keys"]))
+        except KeyError as exc:
+            return Outcome(False, f"missing argument {exc}")
+        return Outcome(False, f"unknown action {action!r}")
 
     async def _say(self, text: str) -> None:
         async with self._speech_lock:
@@ -94,6 +138,8 @@ class Client:
         tasks = [asyncio.create_task(self.link.run()), asyncio.create_task(self.listener.run())]
         if self.screen.available:
             tasks.append(asyncio.create_task(self.screen.run()))
+        if self.camera is not None and self.camera.available:
+            tasks.append(asyncio.create_task(self.camera.run()))
         try:
             await asyncio.gather(*tasks)
         finally:

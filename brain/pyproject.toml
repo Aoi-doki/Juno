@@ -10,11 +10,13 @@ dependencies = [
     "websockets>=13",
     "httpx>=0.27",
     "pyyaml>=6.0",
-    "apscheduler>=3.10",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+# Calendar reading. Recurrence is delegated rather than reimplemented:
+# getting RRULE subtly wrong means silently missing a weekly meeting.
+calendar = ["icalendar>=6.0", "recurring-ical-events>=3.0"]
 
 [project.scripts]
 juno-brain = "juno.__main__:main"

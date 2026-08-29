@@ -18,3 +18,15 @@ enable_barge_in: true
 barge_in_frames: 3                   # 60 ms of speech cuts her off
 
 model_dir: models
+
+# Lets Juno type and click in your session. Off by default: anything that can
+# type into your session can do anything you can, and a misheard sentence
+# should not be able to run a command. Needs ydotool (Wayland) or xdotool (X11).
+allow_input_synthesis: false
+
+# Webcam presence. Frames are processed locally by MediaPipe and discarded —
+# only derived events (at the desk, away, slouching) are ever sent.
+# Needs the camera extra:  pip install -e ".[camera]"
+enable_camera: false
+camera_index: 0
+camera_poll_seconds: 2.0

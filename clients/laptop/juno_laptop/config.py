@@ -46,6 +46,17 @@ class ClientConfig:
     # Where kokoro-onnx model files live. Downloaded once; see the README.
     model_dir: Path = Path("models")
 
+    # Lets Juno synthesise keystrokes and clicks into your session. Off by
+    # default: anything that can type into your session can do anything you
+    # can, and a misheard sentence should not be able to run a command.
+    allow_input_synthesis: bool = False
+
+    # Camera presence (Phase 5). Frames are processed locally and discarded;
+    # only derived events (at_desk, away) are ever sent.
+    enable_camera: bool = False
+    camera_index: int = 0
+    camera_poll_seconds: float = 2.0
+
     # Barge-in: how many consecutive voiced frames during playback count as the
     # user interrupting. Three 20 ms frames is enough to beat a cough.
     barge_in_frames: int = 3

@@ -22,11 +22,16 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type check
     from juno.orchestrator import DeviceRegistry
 
 
-@dataclass(slots=True)
+@dataclass
 class Context:
     memory: "Memory"
     devices: "DeviceRegistry"
     config: "Config"
+    # Set once the scheduler and integrations exist. Optional so the agent can
+    # be constructed and tested without them.
+    calendar: Any = None
+    home: Any = None
+    scheduler: Any = None
 
 
 Handler = Callable[..., Any | Awaitable[Any]]
@@ -73,4 +78,5 @@ async def dispatch(name: str, args: dict[str, Any], ctx: Context) -> str:
         return f"error: {name} failed: {exc}"
 
 
-from juno.tools import core as _core  # noqa: E402,F401  (import registers the tools)
+from juno.tools import actions as _actions  # noqa: E402,F401  (imports register the tools)
+from juno.tools import core as _core  # noqa: E402,F401
